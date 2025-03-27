@@ -17,13 +17,13 @@ create_batches <- function(items, batch_size = 30) {
 # Create batches
 item_batches <- create_batches(all_items)
 
-# Initialise an empty list to store results
+# Initialise empty list to store results
 all_results <- list()
 
 # Iteratively download the HTML
 for (batch_num in seq_along(item_batches)) {
   tryCatch({
-    # Get the current batch of items
+    # Get current batch of items
     current_batch <- item_batches[[batch_num]]
     
     # Be nice to the server
@@ -32,7 +32,7 @@ for (batch_num in seq_along(item_batches)) {
       Sys.sleep(1)
     }
     
-    # Make the request
+    # html request
     response <- GET(
       "https://medicarestatistics.humanservices.gov.au/SASStoredProcess/guest",
       query = list(
@@ -55,18 +55,18 @@ for (batch_num in seq_along(item_batches)) {
       stop(paste("HTTP error:", status_code(response)))
     }
     
-    # Extract the HTML content
+    # Extract HTML content
     html_content <- content(response, "text", encoding = "UTF-8")
     html_content <- read_html(html_content)
       
-    # Extract the table nodes. Moved outside the if statement.
+    # Extract table nodes
     table_nodes <- html_content %>% html_nodes("table")
     
-    # Extract the table
+    # Extract tables
     if (length(table_nodes) > 0) {
       table <- table_nodes %>% .[[1]] %>% html_table(fill = TRUE)
       
-    # Clean the column names
+    # Clean column names
     names(table) <- c("Item", "Month", "NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT", "Total")
     
     # Remove rows with non-numeric characters in the "Item" column
