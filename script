@@ -5,7 +5,7 @@ library(writexl)
 library(httr)
 library(readxl)
 
-# Read the MBS XML file
+# Read in the MBS file
 mbs_xml <- read_xlsx("2025-03-01 MBS-XML-20250301.xlsx") # Replace with your file path
 all_items <- mbs_xml$ItemNum
 
