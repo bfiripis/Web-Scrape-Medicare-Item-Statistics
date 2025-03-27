@@ -47,13 +47,13 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
                               query = list(
                                 "_PROGRAM" = "SBIP://METASERVER/Shared Data/sasdata/prod/VEA0032/SAS.StoredProcess/statistics/mbs_item_standard_report",
                                 "DRILL" = "ag",
-                                "group" = paste(current_batch, collapse = ","),
-                                "VAR" = "services",                     **# Report Variable; options: "services" or "benefits"**
-                                "STAT" = "count",                       **# Report Statistic; options: "count" or "per capita"**
-                                "RPT_FMT" = "by time period and state", **# Report Format, not sure what other options are available**
-                                "PTYPE" = "month",                      **# Time Period; options: "calyear", "finyear", "month"**
-                                "START_DT" = "199307",                  **# Start Date; or other date in YYYYMM format**
-                                "END_DT" = "202502"                     **# latest available release YYYYMM format**
+       **                         "group" = paste(current_batch, collapse = ","),
+                                "VAR" = "services",                     # Report Variable; options: "services" or "benefits"
+                                "STAT" = "count",                       # Report Statistic; options: "count" or "per capita"
+                                "RPT_FMT" = "by time period and state", # Report Format, not sure what other options are available
+                                "PTYPE" = "month",                      # Time Period; options: "calyear", "finyear", "month"
+                                "START_DT" = "199307",                  # Start Date; or other date in YYYYMM format
+                                "END_DT" = "202502"                     # latest available release YYYYMM format
                               ),
 ```
     2. Open the R script in RStudio or your preferred R environment.
