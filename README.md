@@ -40,7 +40,7 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
     1. Place the latest MBS-XML Excel file in the same directory as the R script and modify the file path within the script.
       available here <https://www.mbsonline.gov.au/internet/mbsonline/publishing.nsf/Content/downloads>
                         If you only want certain items, or are only looking at services provided in a given time period, update this code:
-                           ```R
+```R
                             # Make the request
                             response <- GET(
                               "https://medicarestatistics.humanservices.gov.au/SASStoredProcess/guest",
@@ -55,7 +55,7 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
                                 "START_DT" = "199307",                  **# Start Date; or other date in YYYYMM format**
                                 "END_DT" = "202502"                     **# latest available release YYYYMM format**
                               ),
-                              ```
+```
     2. Open the R script in RStudio or your preferred R environment.
     3. Run the script.
     4. The script will download the data, process it, and save it to medicare_services_data.xlsx in the same directory.
@@ -67,7 +67,7 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
         Month: Time period (month).
         NSW, VIC, QLD, SA, WA, TAS, ACT, NT: Number of services provided in each state/territory.
         Total: Total number of services provided across all states/territories.
-     ```
+```
 
 ## Notes
     This script can be really slow, this is due to slow response time from SAS backend of Services Australia's server
