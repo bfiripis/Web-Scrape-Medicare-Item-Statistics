@@ -1,0 +1,109 @@
+library(rvest)
+library(dplyr)
+library(tidyr)
+library(writexl)
+library(httr)
+library(readxl)
+
+# Read the MBS XML file
+mbs_xml <- read_xlsx("2025-03-01 MBS-XML-20250301.xlsx") # Replace with your file path
+all_items <- mbs_xml$ItemNum
+
+# Function to create batches of items (max 30 per batch)
+create_batches <- function(items, batch_size = 30) {
+  split(items, ceiling(seq_along(items) / batch_size))
+}
+
+# Create batches
+item_batches <- create_batches(all_items)
+
+# Initialise an empty list to store results
+all_results <- list()
+
+# Iteratively download the HTML
+for (batch_num in seq_along(item_batches)) {
+  tryCatch({
+    # Get the current batch of items
+    current_batch <- item_batches[[batch_num]]
+    
+    # Be nice to the server
+    if (batch_num > 1) {
+      cat(paste("Pausing between batches... Batch", batch_num, "of", length(item_batches), "\n"))
+      Sys.sleep(1)
+    }
+    
+    # Make the request
+    response <- GET(
+      "https://medicarestatistics.humanservices.gov.au/SASStoredProcess/guest",
+      query = list(
+        "_PROGRAM" = "SBIP://METASERVER/Shared Data/sasdata/prod/VEA0032/SAS.StoredProcess/statistics/mbs_item_standard_report",
+        "DRILL" = "ag",
+        "group" = paste(current_batch, collapse = ","),
+        "VAR" = "services",
+        "STAT" = "count",
+        "RPT_FMT" = "by time period and state",
+        "PTYPE" = "month",
+        "START_DT" = "199307",
+        "END_DT" = "202502"
+      ),
+      # Add a user agent to mimic a browser
+      add_headers("User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+    )
+    
+    # Check response status
+    if (status_code(response) != 200) {
+      stop(paste("HTTP error:", status_code(response)))
+    }
+    
+    # Extract the HTML content
+    html_content <- content(response, "text", encoding = "UTF-8")
+    html_content <- read_html(html_content)
+      
+    # Extract the table nodes. Moved outside the if statement.
+    table_nodes <- html_content %>% html_nodes("table")
+    
+    # Extract the table
+    if (length(table_nodes) > 0) {
+      table <- table_nodes %>% .[[1]] %>% html_table(fill = TRUE)
+      
+    # Clean the column names
+    names(table) <- c("Item", "Month", "NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT", "Total")
+    
+    # Remove rows with non-numeric characters in the "Item" column
+    table <- table %>%
+      filter(grepl("^[0-9]+$", Item))
+    
+    # Remove rows with "Total" or "Month" in the "Month" column
+    table <- table %>%
+      filter(!grepl("Total|Month", Month, ignore.case = TRUE))
+    
+    # Convert service columns to numeric, removing commas
+    table <- table %>%
+      mutate(across(c(-Month), ~as.numeric(gsub(",", "", .))))
+    
+    # Store the results
+    if(nrow(table) > 0){ # Check if there is data in table, before adding it to all_results.
+      all_results[[batch_num]] <- table
+    } else{
+      #add a empty dataframe with the correct columns if no data is present.
+      all_results[[batch_num]] <- data.frame(Item = character(), Month = character(), NSW = numeric(), VIC = numeric(), QLD = numeric(), SA = numeric(), WA = numeric(), TAS = numeric(), ACT = numeric(), NT = numeric(), Total = numeric())
+    }
+    
+    # Print progress
+    cat(paste("Processed batch", batch_num, "of", length(item_batches), "\n"))
+    error = function(e) {
+    cat(paste("Error processing batch", batch_num, ":", e$message, "\n"))
+  
+    }
+    }
+}
+)}
+
+# Combine all results
+final_table <- do.call(rbind, all_results)
+
+# Write to Excel
+write_xlsx(final_table, "medicare_services_data.xlsx")
+
+# Print completion message
+cat("Data scraping and processing complete. Results saved to medicare_services_data.xlsx\n")
