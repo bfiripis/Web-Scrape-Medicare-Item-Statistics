@@ -4,24 +4,26 @@ It retrieves the number of services provided for specified Medicare Benefits Sch
 
 ## Prerequisites
 Before running the script, ensure you have the following R packages installed:
-
+```R
 -   `rvest`
 -   `dplyr`
 -   `tidyr`
 -   `writexl`
 -   `httr`
 -   `readxl`
+```
 
 You can install these packages using the following command in your R console:
 ```R
 install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
 ```
-##Input Data
+
+## Input Data
 
     2025-03-01 MBS-XML-20250301.xlsx (or your  file): This Excel file should contain a column named ItemNum listing the MBS item numbers for which you want to retrieve data.
     Replace this with the latest version of the MBS XML from the MBS website <https://www.mbsonline.gov.au/internet/mbsonline/publishing.nsf/Content/downloads>, converted to an excel workbook. 
 
-##Script Overview
+## Script Overview
     1. Read Input Data: It reads the MBS item numbers from the specified Excel file.
     2. Create Batches: The script divides the list of item numbers into batches of 30 to avoid overwhelming the server with requests.
     3. Iteratively Scrape html via SAS query <https://medicarestatistics.humanservices.gov.au/VEA0032/SAS.Web/statistics/mbs_item.html>:
@@ -34,7 +36,7 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
     4. Combine Results: It combines the data from all batches into a single data frame.
     5. Write to Excel: It writes the final data frame to an Excel file named medicare_services_data.xlsx.
 
-##Usage
+## Usage
     1. Place the latest MBS-XML Excel file in the same directory as the R script and modify the file path within the script.
       available here <https://www.mbsonline.gov.au/internet/mbsonline/publishing.nsf/Content/downloads>
                         If you only want certain items, or are only looking at services provided in a given time period, update this code:
@@ -58,7 +60,7 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
     3. Run the script.
     4. The script will download the data, process it, and save it to medicare_services_data.xlsx in the same directory.
 
-##Output Data
+## Output Data
 ```R
     medicare_services_data.xlsx: This Excel file contains the scraped and processed Medicare services data. The columns are:
         Item: MBS item number.
