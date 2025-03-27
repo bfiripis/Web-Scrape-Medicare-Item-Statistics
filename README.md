@@ -15,7 +15,7 @@ Before running the script, ensure you have the following R packages installed:
 You can install these packages using the following command in your R console:
 ```R
 install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
-
+```
 ##Input Data
 
     2025-03-01 MBS-XML-20250301.xlsx (or your  file): This Excel file should contain a column named ItemNum listing the MBS item numbers for which you want to retrieve data.
@@ -38,6 +38,7 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
     1. Place the latest MBS-XML Excel file in the same directory as the R script and modify the file path within the script.
       available here <https://www.mbsonline.gov.au/internet/mbsonline/publishing.nsf/Content/downloads>
                         If you only want certain items, or are only looking at services provided in a given time period, update this code:
+                           ```R
                             # Make the request
                             response <- GET(
                               "https://medicarestatistics.humanservices.gov.au/SASStoredProcess/guest",
@@ -52,18 +53,19 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
                                 "START_DT" = "199307",                  **# Start Date; or other date in YYYYMM format**
                                 "END_DT" = "202502"                     **# latest available release YYYYMM format**
                               ),
+                              ```
     2. Open the R script in RStudio or your preferred R environment.
     3. Run the script.
     4. The script will download the data, process it, and save it to medicare_services_data.xlsx in the same directory.
 
 ##Output Data
-
+```R
     medicare_services_data.xlsx: This Excel file contains the scraped and processed Medicare services data. The columns are:
         Item: MBS item number.
         Month: Time period (month).
         NSW, VIC, QLD, SA, WA, TAS, ACT, NT: Number of services provided in each state/territory.
         Total: Total number of services provided across all states/territories.
-
+     ```
 ##Notes
     This script can be really slow, this is due to slow response time from SAS backend of Services Australia's server
     The script includes a delay between batches to avoid overloading the server.
