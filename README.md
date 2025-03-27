@@ -68,7 +68,8 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
         NSW, VIC, QLD, SA, WA, TAS, ACT, NT: Number of services provided in each state/territory.
         Total: Total number of services provided across all states/territories.
      ```
-##Notes
+
+## Notes
     This script can be really slow, this is due to slow response time from SAS backend of Services Australia's server
     The script includes a delay between batches to avoid overloading the server.
     Error handling is implemented to catch and report any issues during the scraping process.
