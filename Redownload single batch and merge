@@ -1,9 +1,18 @@
 #Sometimes the server doesn't respond in time and misses batches, this redownloads just one batch and merges it into the main table
-# Redownload batch e.g. 51 and add it to all_results (amend batch if other batch needed)
-if (length(item_batches) >= 51) {
+# Example usage to redownload batch 51:
+# redownload_missed_batch(51, item_batches, all_results
+
+redownload_missed_batch <- function(batch_number, item_batches, all_results) {
+  # Validate input
+  if (length(item_batches) < batch_number) {
+    stop(paste("Batch number", batch_number, "is out of range"))
+  }
+  
+  # Get the batch items
+  current_batch <- item_batches[[batch_number]]
+  
   tryCatch({
-    current_batch <- item_batches[[51]]
-    
+    # Make HTTP request
     response <- GET(
       "https://medicarestatistics.humanservices.gov.au/SASStoredProcess/guest",
       query = list(
@@ -20,6 +29,7 @@ if (length(item_batches) >= 51) {
       add_headers("User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
     )
     
+    # Handle response
     if (status_code(response) == 200) {
       html_content <- content(response, "text", encoding = "UTF-8")
       html_content <- read_html(html_content)
@@ -28,23 +38,61 @@ if (length(item_batches) >= 51) {
       if (length(table_nodes) > 0) {
         table <- table_nodes %>% .[[1]] %>% html_table(fill = TRUE)
         names(table) <- c("Item", "Month", "NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT", "Total")
-        table <- table %>% filter(grepl("^[0-9]+$", Item)) %>% filter(!grepl("Total|Month", Month, ignore.case = TRUE)) %>% mutate(across(c(-Month), ~as.numeric(gsub(",", "", .))))
+        
+        # Clean the data
+        table <- table %>% 
+          filter(grepl("^[0-9]+$", Item)) %>% 
+          filter(!grepl("Total|Month", Month, ignore.case = TRUE)) %>% 
+          mutate(across(c(-Month), ~as.numeric(gsub(",", "", .))))
         
         if (nrow(table) > 0) {
-          all_results[[51]] <- table
-          cat("Batch 51 redownloaded and added to results.\n")
+          all_results[[batch_number]] <- table
+          cat(paste("Batch", batch_number, "redownloaded and added to results.\n"))
         } else {
-          all_results[[51]] <- data.frame(Item = character(), Month = character(), NSW = numeric(), VIC = numeric(), QLD = numeric(), SA = numeric(), WA = numeric(), TAS = numeric(), ACT = numeric(), NT = numeric(), Total = numeric())
-          cat("Batch 51 redownloaded, but contained no data.\n")
+          all_results[[batch_number]] <- data.frame(Item = character(), Month = character(), 
+                                                   NSW = numeric(), VIC = numeric(), QLD = numeric(), 
+                                                   SA = numeric(), WA = numeric(), TAS = numeric(), 
+                                                   ACT = numeric(), NT = numeric(), Total = numeric())
+          cat(paste("Batch", batch_number, "redownloaded, but contained no data.\n"))
         }
       } else {
-        all_results[[51]] <- data.frame(Item = character(), Month = character(), NSW = numeric(), VIC = numeric(), QLD = numeric(), SA = numeric(), WA = numeric(), TAS = numeric(), ACT = numeric(), NT = numeric(), Total = numeric())
-        cat("Batch 51 redownloaded, but contained no table.\n")
+        all_results[[batch_number]] <- data.frame(Item = character(), Month = character(), 
+                                                 NSW = numeric(), VIC = numeric(), QLD = numeric(), 
+                                                 SA = numeric(), WA = numeric(), TAS = numeric(), 
+                                                 ACT = numeric(), NT = numeric(), Total = numeric())
+        cat(paste("Batch", batch_number, "redownloaded, but contained no table.\n"))
       }
     } else {
-      cat(paste("Failed to redownload batch 51. HTTP error:", status_code(response), "\n"))
+      cat(paste("Failed to redownload batch", batch_number, ". HTTP error:", status_code(response), "\n"))
     }
   }, error = function(e) {
-    cat(paste("Error redownloading batch 51:", e$message, "\n"))
+    cat(paste("Error redownloading batch", batch_number, ":", e$message, "\n"))
   })
+  
+  # Return the updated results list
+  return(all_results)
 }
+
+
+
+# Recombine all results
+final_table <- do.call(rbind, all_results)
+
+pivoted_table <- final_table %>%
+  select(Item, Month, NSW, VIC, QLD, SA, WA, TAS, ACT, NT, Total) %>%
+  pivot_longer(
+    cols = c(NSW, VIC, QLD, SA, WA, TAS, ACT, NT, Total),
+    names_to = "State",
+    values_to = "Service/Benefit"
+  )
+
+# Merge data with item metadata (category and group information)
+mbs_xml <- read.csv("2025-03-01 MBS-XML-20250301.csv")
+item_metadata <- select(mbs_xml, ItemNum, Category, Group, SubGroup)
+merged_data <- merge(final_table, item_metadata, by.x = "Item", by.y = "ItemNum")
+
+# Write to csv
+write.csv(merged_data, "2025-04-01_medicare_services_data.csv")
+
+# Print completion message
+cat("Data processing complete. Results saved to medicare_services_data.csv\n")
