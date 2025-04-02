@@ -71,6 +71,7 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
 
 ## Notes
     This script can be really slow, this is due to slow response time from SAS backend of Services Australia's server
+    Infrequently, the server doesn't respond in time and misses one or two batches, you can individually download the one or two missing batches using the function in "redownload batch and merge.R"
     The script includes a delay between batches to avoid overloading the server.
     Error handling is implemented to catch and report any issues during the scraping process.
     Ensure you have a stable internet connection.
