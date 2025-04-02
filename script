@@ -181,4 +181,4 @@ merged_data <- merge(final_table, item_metadata, by.x = "Item", by.y = "ItemNum"
 write.csv(merged_data, "2025-04-01_medicare_services_data.csv")
 
 # Print completion message
-cat("Data scraping and processing complete. Results saved to medicare_services_data_benefit.csv\n")
+cat("Data scraping and processing complete. Results saved to medicare_services_data.csv\n")
