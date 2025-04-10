@@ -1,0 +1,132 @@
+library(rvest)
+library(dplyr)
+library(tidyr)
+library(httr)
+
+# --- SETUP ---
+
+mbs_data <- read.csv("2025-03-01 MBS-XML-20250301.csv")
+mbs_item_numbers <- mbs_data$ItemNum
+batch_size <- 30 # 30 is max allowed by the server
+api_url <- "https://medicarestatistics.humanservices.gov.au/SASStoredProcess/guest"
+variable <- "services" # You can change to "benefit" if required
+statistic <- "count" # You can change to "per capita" if required
+report_format <- "by time period and state" # You can change to "by state" if required
+time_period <- "month" # You can change to "quarter" or "finyear" or "year"
+start_date <- "199307"
+end_date <- "202502"
+all_results <- list()
+
+# --- HELPER FUNCTIONS ---
+
+# Split items into batches
+create_batches <- function(items, size) {
+  split(items, ceiling(seq_along(items) / size))
+}
+
+# Get HTML content from the API
+get_html <- function(item_group) {
+  query_params <- list(
+    "_PROGRAM" = "SBIP://METASERVER/Shared Data/sasdata/prod/VEA0032/SAS.StoredProcess/statistics/mbs_item_standard_report",
+    "DRILL" = "ag",
+    "group" = paste(item_group, collapse = ","),
+    "VAR" = variable,
+    "STAT" = statistic,
+    "RPT_FMT" = report_format,
+    "PTYPE" = time_period,
+    "START_DT" = start_date,
+    "END_DT" = end_date
+  )
+  response <- GET(api_url, query = query_params)
+  content(response, "text", encoding = "UTF-8") %>% read_html()
+}
+
+# Extract the first table from HTML
+get_table_from_html <- function(html) {
+  tables <- html %>% html_nodes("table")
+  if (length(tables) > 0) {
+    tables[[1]] %>% html_table(fill = TRUE)
+  } else {
+    NULL
+  }
+}
+
+# Clean the table data
+clean_up_table <- function(table) {
+  if (is.null(table)) {
+    return(create_empty_table())
+  }
+  names(table) <- c("Item", "Month", "NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT", "Total")
+  table %>%
+    filter(grepl("^[0-9]+$", Item),
+           !grepl("Total|Month", Month, ignore.case = TRUE)) %>%
+    mutate(across(c(-Month), ~as.numeric(gsub(",", "", .)))) %>%
+    ensure_all_columns()
+}
+
+# Make sure all expected columns are present
+ensure_all_columns <- function(table) {
+  expected_cols <- c("Item", "Month", "NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT", "Total")
+  missing_cols <- setdiff(expected_cols, names(table))
+  if (length(missing_cols) > 0) {
+    table[missing_cols] <- NA
+  }
+  table[, expected_cols] # Reorder columns
+}
+
+# Create an empty table structure
+create_empty_table <- function() {
+  data.frame(
+    Item = character(), Month = character(), NSW = numeric(), VIC = numeric(),
+    QLD = numeric(), SA = numeric(), WA = numeric(), TAS = numeric(),
+    ACT = numeric(), NT = numeric(), Total = numeric()
+  )
+}
+
+# Process one batch of items
+process_one_batch <- function(batch_number, item_batches) {
+  tryCatch({
+    cat(paste("Processing batch", batch_number, "of", length(item_batches), "\n"))
+    if (batch_number > 1) {
+      cat("Pausing...\n")
+      Sys.sleep(1)
+    }
+    html <- get_html(item_batches[[batch_number]])
+    table <- get_table_from_html(html)
+    cleaned_table <- clean_up_table(table)
+    cat(paste("Completed batch", batch_number, "\n"))
+    cleaned_table
+  }, error = function(e) {
+    cat(paste("Error in batch", batch_number, ":", e$message, "\n"))
+    create_empty_table()
+  })
+}
+
+# --- MAIN PROCESS ---
+
+# Split item numbers into batches
+item_batches <- create_batches(mbs_item_numbers, batch_size)
+
+# Loop through each batch and process
+for (i in seq_along(item_batches)) {
+  result <- process_one_batch(i, item_batches)
+  all_results[[i]] <- result
+}
+
+# Combine all processed tables
+final_table <- do.call(rbind, all_results)
+
+# Merge with original item data for category and group
+item_metadata <- select(mbs_data, ItemNum, Category, Group, SubGroup)
+merged_data <- merge(final_table, item_metadata, by.x = "Item", by.y = "ItemNum")
+
+# --- SAVE RESULTS ---
+output_date <- format(Sys.Date(), "%Y-%m-%d")
+
+file_name <- ifelse(variable == "services", 
+                    paste0(output_date, "_mbs_services_data.csv"), 
+                    paste0(output_date, "_mbs_benefit_data.csv"))
+
+write.csv(final_table, file_name, row.names = FALSE)
+
+cat("Data scraping and processing complete. Results saved to ", file_name, "\n")
