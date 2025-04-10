@@ -1,0 +1,195 @@
+library(rvest)
+library(dplyr)
+library(tidyr)
+library(httr)
+
+# --- SETUP ---
+
+pbs_file <- "PBSSchedule.csv"
+pbs_data <- read.csv(pbs_file)
+pbs_item_codes <- pbs_data$pbs_code
+batch_size <- 30 # 30 is max allowed by the server
+api_url <- "https://medicarestatistics.humanservices.gov.au/SASStoredProcess/guest"
+variable <- "SERVICES" # You can change to "BENEFIT" if required
+start_date <- "199201"
+end_date <- "202502"
+all_results <- list()
+
+# --- HELPER FUNCTIONS ---
+
+# Split items into batches
+make_batches <- function(items, size) {
+  split(items, ceiling(seq_along(items) / size))
+}
+
+# Get HTML content from the API
+get_html <- function(item_group) {
+  # Format items for URL with single quotes
+  formatted_items <- paste0("'", item_group, "'", collapse = ",")
+  item_list <- paste(gsub("'", "", item_group), collapse = ",")
+  
+  query_params <- list(
+    "_PROGRAM" = "SBIP://METASERVER/Shared Data/sasdata/prod/VEA0032/SAS.StoredProcess/statistics/pbs_item_standard_report",
+    "itemlst" = formatted_items,
+    "ITEMCNT" = length(item_group),
+    "LIST" = item_list,
+    "VAR" = variable,  # You can change to "BENEFITS" if required
+    "RPT_FMT" = "2",      # Format 2 is the table format for by scheme and month (rows) by state (cols)
+    "start_dt" = start_date,
+    "end_dt" = end_date
+  )
+  
+  response <- GET(api_url, query = query_params)
+  content(response, "text", encoding = "UTF-8") %>% read_html()
+}
+
+# Extract the table from HTML
+get_table_from_html <- function(html) {
+  table_nodes <- html %>% html_nodes("table")
+  
+  # Return empty dataframe if no tables found
+  if (length(table_nodes) == 0) {
+    return(NULL)
+  }
+  
+  # Find the table that contains the PBS data
+  for (i in seq_along(table_nodes)) {
+    table <- table_nodes[[i]] %>% html_table(fill = TRUE)
+    
+    # Look for tables with "Item", "Scheme", and "Month" strings
+    if (any(grepl("Item", table, fixed = TRUE)) && 
+        any(grepl("Scheme", table, fixed = TRUE)) && 
+        any(grepl("Month", table, fixed = TRUE))) {
+      return(table)
+    }
+  }
+  
+  # If no suitable table found
+  return(NULL)
+}
+
+# Clean up the table data
+clean_up_table <- function(table) {
+  if (is.null(table)) {
+    return(create_empty_table())
+  }
+  
+  # Find the row that contains Item, Scheme, Month
+  header_row <- NULL
+  for (i in 1:nrow(table)) {
+    if (any(grepl("Item", table[i,], fixed = TRUE)) && 
+        any(grepl("Scheme", table[i,], fixed = TRUE)) && 
+        any(grepl("Month", table[i,], fixed = TRUE))) {
+      header_row <- i
+      break
+    }
+  }
+  
+  if (!is.null(header_row)) {
+    # Create standardized column names
+    col_names <- c("Item", "Scheme", "Month", 
+                   "NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT", "Total")
+    
+    # Find data rows (rows after the header row)
+    data_rows <- table[(header_row+1):nrow(table),]
+    
+    # Assign appropriate column names based on position
+    if (ncol(data_rows) >= length(col_names)) {
+      colnames(data_rows)[1:length(col_names)] <- col_names
+    } else {
+      # Handle case with fewer columns than expected
+      colnames(data_rows) <- c(col_names[1:ncol(data_rows)])
+    }
+    
+    # Pattern for month-year format
+    month_year_pattern <- "(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\\d{4}"
+    
+    # Filter and clean rows
+    data_rows <- data_rows %>%
+      filter(
+        !grepl("Total", Item, ignore.case = TRUE),
+        !grepl("Total", Scheme, ignore.case = TRUE),
+        !grepl("Total", Month, ignore.case = TRUE),
+        !grepl("All items", Item, ignore.case = TRUE),
+        grepl("^[0-9A-Za-z]+$", Item),
+        Scheme %in% c("PBS", "RPBS"),
+        grepl(month_year_pattern, Month)
+      )
+    
+    # Convert numeric columns
+    for (col in c("NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT", "Total")) {
+      if (col %in% colnames(data_rows)) {
+        data_rows[[col]] <- as.numeric(gsub(",", "", data_rows[[col]]))
+      }
+    }
+    
+    return(data_rows)
+  }
+  
+  # Return empty table if header row not found or other issue
+  return(create_empty_table())
+}
+
+# Make sure all expected columns are present
+ensure_all_columns <- function(table) {
+  expected_cols <- c("Item", "Scheme", "Month", "NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT", "Total")
+  missing_cols <- setdiff(expected_cols, names(table))
+  if (length(missing_cols) > 0) {
+    table[missing_cols] <- NA
+  }
+  table[, expected_cols] # Reorder columns
+}
+
+# Create an empty table structure
+create_empty_table <- function() {
+  data.frame(
+    Item = character(),  Scheme = character(), Month = character(),
+    NSW = numeric(), VIC = numeric(), QLD = numeric(), SA = numeric(),
+    WA = numeric(), TAS = numeric(), ACT = numeric(), NT = numeric(), Total = numeric(),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Process one batch of items
+process_one_batch <- function(batch_number, item_batches) {
+  tryCatch({
+    cat(paste("Processing batch", batch_number, "of", length(item_batches), "\n"))
+    if (batch_number > 1) {
+      cat("Pausing...\n")
+      Sys.sleep(2)
+    }
+    html <- get_html(item_batches[[batch_number]])
+    table <- get_table_from_html(html)
+    cleaned_table <- clean_up_table(table) %>% ensure_all_columns() # added ensure_all_columns here
+    cat(paste("Completed batch", batch_number, "\n"))
+    cleaned_table
+  }, error = function(e) {
+    cat(paste("Error in batch", batch_number, ":", e$message, "\n"))
+    create_empty_table()
+  })
+}
+
+# --- MAIN PROCESS ---
+
+# Split item codes into batches
+item_batches <- make_batches(pbs_item_codes, batch_size)
+
+# Loop through each batch and process
+for (i in seq_along(item_batches)) { 
+  result <- process_one_batch(i, item_batches)
+  all_results[[i]] <- result
+}
+
+# Combine all processed tables
+final_table <- do.call(rbind, all_results)
+
+# --- SAVE RESULTS ---
+output_date <- format(Sys.Date(), "%Y-%m-%d")
+
+file_name <- ifelse(variable == "SERVICES", 
+                    paste0(output_date, "_pbs_services_data.csv"), 
+                    paste0(output_date, "_pbs_benefit_data.csv"))
+
+write.csv(final_table, file_name, row.names = FALSE)
+
+cat("Data scraping and processing complete. Results saved to ", file_name, "\n")
