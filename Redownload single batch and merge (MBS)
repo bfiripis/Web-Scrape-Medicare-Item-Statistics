@@ -1,16 +1,28 @@
-#Sometimes the server doesn't respond in time and misses batches, this redownloads just one batch and merges it into the main table
-# Example usage to redownload batch 51:
-# redownload_missed_batch(51, item_batches, all_results
+# --- Function to Redownload a Missing Batch ---
+
+# Sometimes the server doesn't respond in time and misses batches.
+# This function redownloads a specific batch and merges it into the main results.
+#
+# Args:
+#   batch_number: The index of the batch to redownload (integer).
+#   item_batches: A list of item number vectors, where each vector represents a batch.
+#   all_results: A list to store the data frames for each processed batch.
+#
+# Returns:
+#   The updated 'all_results' list with the redownloaded batch.
+#
+# Example Usage:
+# redownload_missed_batch(51, item_batches, all_results)
 
 redownload_missed_batch <- function(batch_number, item_batches, all_results) {
   # Validate input
   if (length(item_batches) < batch_number) {
     stop(paste("Batch number", batch_number, "is out of range"))
   }
-  
+
   # Get the batch items
   current_batch <- item_batches[[batch_number]]
-  
+
   tryCatch({
     # Make HTTP request
     response <- GET(
@@ -28,38 +40,42 @@ redownload_missed_batch <- function(batch_number, item_batches, all_results) {
       ),
       add_headers("User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
     )
-    
+
     # Handle response
     if (status_code(response) == 200) {
       html_content <- content(response, "text", encoding = "UTF-8")
       html_content <- read_html(html_content)
       table_nodes <- html_content %>% html_nodes("table")
-      
+
       if (length(table_nodes) > 0) {
         table <- table_nodes %>% .[[1]] %>% html_table(fill = TRUE)
         names(table) <- c("Item", "Month", "NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT", "Total")
-        
+
         # Clean the data
-        table <- table %>% 
-          filter(grepl("^[0-9]+$", Item)) %>% 
-          filter(!grepl("Total|Month", Month, ignore.case = TRUE)) %>% 
+        table <- table %>%
+          filter(grepl("^[0-9]+$", Item)) %>%
+          filter(!grepl("Total|Month", Month, ignore.case = TRUE)) %>%
           mutate(across(c(-Month), ~as.numeric(gsub(",", "", .))))
-        
+
         if (nrow(table) > 0) {
           all_results[[batch_number]] <- table
           cat(paste("Batch", batch_number, "redownloaded and added to results.\n"))
         } else {
-          all_results[[batch_number]] <- data.frame(Item = character(), Month = character(), 
-                                                   NSW = numeric(), VIC = numeric(), QLD = numeric(), 
-                                                   SA = numeric(), WA = numeric(), TAS = numeric(), 
-                                                   ACT = numeric(), NT = numeric(), Total = numeric())
+          all_results[[batch_number]] <- data.frame(
+            Item = character(), Month = character(),
+            NSW = numeric(), VIC = numeric(), QLD = numeric(),
+            SA = numeric(), WA = numeric(), TAS = numeric(),
+            ACT = numeric(), NT = numeric(), Total = numeric()
+          )
           cat(paste("Batch", batch_number, "redownloaded, but contained no data.\n"))
         }
       } else {
-        all_results[[batch_number]] <- data.frame(Item = character(), Month = character(), 
-                                                 NSW = numeric(), VIC = numeric(), QLD = numeric(), 
-                                                 SA = numeric(), WA = numeric(), TAS = numeric(), 
-                                                 ACT = numeric(), NT = numeric(), Total = numeric())
+        all_results[[batch_number]] <- data.frame(
+          Item = character(), Month = character(),
+          NSW = numeric(), VIC = numeric(), QLD = numeric(),
+          SA = numeric(), WA = numeric(), TAS = numeric(),
+          ACT = numeric(), NT = numeric(), Total = numeric()
+        )
         cat(paste("Batch", batch_number, "redownloaded, but contained no table.\n"))
       }
     } else {
@@ -68,23 +84,13 @@ redownload_missed_batch <- function(batch_number, item_batches, all_results) {
   }, error = function(e) {
     cat(paste("Error redownloading batch", batch_number, ":", e$message, "\n"))
   })
-  
+
   # Return the updated results list
   return(all_results)
 }
 
-
-
 # Recombine all results
 final_table <- do.call(rbind, all_results)
-
-pivoted_table <- final_table %>%
-  select(Item, Month, NSW, VIC, QLD, SA, WA, TAS, ACT, NT, Total) %>%
-  pivot_longer(
-    cols = c(NSW, VIC, QLD, SA, WA, TAS, ACT, NT, Total),
-    names_to = "State",
-    values_to = "Service/Benefit"
-  )
 
 # Merge data with item metadata (category and group information)
 mbs_xml <- read.csv("2025-03-01 MBS-XML-20250301.csv")
@@ -92,7 +98,13 @@ item_metadata <- select(mbs_xml, ItemNum, Category, Group, SubGroup)
 merged_data <- merge(final_table, item_metadata, by.x = "Item", by.y = "ItemNum")
 
 # Write to csv
-write.csv(merged_data, "2025-04-01_medicare_services_data.csv")
 
-# Print completion message
-cat("Data processing complete. Results saved to medicare_services_data.csv\n")
+output_date <- format(Sys.Date(), "%Y-%m-%d")
+
+file_name <- ifelse(variable == "services", 
+                    paste0(output_date, "_mbs_services_data.csv"), 
+                    paste0(output_date, "_mbs_benefit_data.csv"))
+
+write.csv(final_table, file_name, row.names = FALSE)
+
+cat("Data scraping and processing complete. Results saved to ", file_name, "\n")
