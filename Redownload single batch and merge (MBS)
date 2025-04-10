@@ -2,15 +2,16 @@
 
 # Sometimes the server doesn't respond in time and misses batches.
 # This function redownloads a specific batch and merges it into the main results.
-#
+
 # Args:
 #   batch_number: The index of the batch to redownload (integer).
 #   item_batches: A list of item number vectors, where each vector represents a batch.
 #   all_results: A list to store the data frames for each processed batch.
-#
+
 # Returns:
 #   The updated 'all_results' list with the redownloaded batch.
-#
+#   The updated csv with the redownloaded batch merged.
+
 # Example Usage:
 # redownload_missed_batch(51, item_batches, all_results)
 
