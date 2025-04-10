@@ -1,0 +1,151 @@
+# --- Function to Redownload a Missing Batch ---
+
+# Sometimes the server doesn't respond in time and misses batches.
+# This function redownloads a specific batch and merges it into the main results.
+# Args:
+#   batch_number: The index of the batch to redownload (integer).
+#   item_batches: A list of item number vectors, where each vector represents a batch.
+#   all_results: A list to store the data frames for each processed batch.
+# Returns:
+#   The updated 'all_results' list with the redownloaded batch.
+#   The updated csv with the redownloaded batch included.
+
+redownload_missed_batch <- function(batch_number, item_batches, all_results) {
+  # Validate input
+  if (length(item_batches) < batch_number) {
+    stop(paste("Batch number", batch_number, "is out of range"))
+  }
+
+  # Get the batch items
+  current_batch <- item_batches[[batch_number]]
+  
+  # Format items for URL with single quotes
+  formatted_items <- paste0("'", current_batch, "'", collapse = ",")
+  item_list <- paste(gsub("'", "", current_batch), collapse = ",")
+
+  tryCatch({
+    # Make HTTP request
+    response <- GET(
+      "https://medicarestatistics.humanservices.gov.au/SASStoredProcess/guest",
+      query = list(
+        "_PROGRAM" = "SBIP://METASERVER/Shared Data/sasdata/prod/VEA0032/SAS.StoredProcess/statistics/pbs_item_standard_report",
+        "itemlst" = formatted_items,
+        "ITEMCNT" = length(current_batch),
+        "LIST" = item_list,
+        "VAR" = "SERVICES",
+        "RPT_FMT" = "2",
+        "start_dt" = "199201",
+        "end_dt" = "202502"
+      )
+    )
+
+    # Handle response
+    if (status_code(response) == 200) {
+      html_content <- content(response, "text", encoding = "UTF-8")
+      html_content <- read_html(html_content)
+      table_nodes <- html_content %>% html_nodes("table")
+      
+      # Find the table that contains the PBS data
+      target_table <- NULL
+      for (i in seq_along(table_nodes)) {
+        table <- table_nodes[[i]] %>% html_table(fill = TRUE)
+        if (any(grepl("Item", table, fixed = TRUE)) && 
+            any(grepl("Scheme", table, fixed = TRUE)) && 
+            any(grepl("Month", table, fixed = TRUE))) {
+          target_table <- table
+          break
+        }
+      }
+
+      if (!is.null(target_table)) {
+        table <- target_table
+        
+        # Find the row that contains Item, Scheme, Month
+        header_row <- NULL
+        for (i in 1:nrow(table)) {
+          if (any(grepl("Item", table[i,], fixed = TRUE)) && 
+              any(grepl("Scheme", table[i,], fixed = TRUE)) && 
+              any(grepl("Month", table[i,], fixed = TRUE))) {
+            header_row <- i
+            break
+          }
+        }
+        
+        if (!is.null(header_row)){
+          # Create standardized column names
+          col_names <- c("Item", "Scheme", "Month", 
+                         "NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT", "Total")
+          
+          # Find data rows (rows after the header row)
+          data_rows <- table[(header_row+1):nrow(table),]
+          
+          # Assign appropriate column names based on position
+          if (ncol(data_rows) >= length(col_names)) {
+            colnames(data_rows)[1:length(col_names)] <- col_names
+          } else {
+            # Handle case with fewer columns than expected
+            colnames(data_rows) <- c(col_names[1:ncol(data_rows)])
+          }
+          
+          # Pattern for month-year format
+          month_year_pattern <- "(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\\d{4}"
+          
+          # Filter and clean rows
+          table <- data_rows %>%
+            filter(
+              !grepl("Total", Item, ignore.case = TRUE),
+              !grepl("Total", Scheme, ignore.case = TRUE),
+              !grepl("Total", Month, ignore.case = TRUE),
+              !grepl("All items", Item, ignore.case = TRUE),
+              grepl("^[0-9A-Za-z]+$", Item),
+              Scheme %in% c("PBS", "RPBS"),
+              grepl(month_year_pattern, Month)
+            )
+          
+          # Convert numeric columns
+          for (col in c("NSW", "VIC", "QLD", "SA", "WA", "TAS", "ACT", "NT", "Total")) {
+            if (col %in% colnames(table)) {
+              table[[col]] <- as.numeric(gsub(",", "", table[[col]]))
+            }
+          }
+          
+          if (nrow(table) > 0) {
+            all_results[[batch_number]] <- table
+            cat(paste("Batch", batch_number, "redownloaded and added to results.\n"))
+          } else {
+            all_results[[batch_number]] <- create_empty_table()
+            cat(paste("Batch", batch_number, "redownloaded, but contained no data.\n"))
+          }
+        } else {
+          all_results[[batch_number]] <- create_empty_table()
+          cat(paste("Batch", batch_number, "redownloaded, but header row not found.\n"))
+        }
+      } else {
+        all_results[[batch_number]] <- create_empty_table()
+        cat(paste("Batch", batch_number, "redownloaded, but contained no suitable table.\n"))
+      }
+    } else {
+      cat(paste("Failed to redownload batch", batch_number, ". HTTP error:", status_code(response), "\n"))
+    }
+  }, error = function(e) {
+    cat(paste("Error redownloading batch", batch_number, ":", e$message, "\n"))
+  })
+
+  # Return the updated results list
+  return(all_results)
+}
+
+# Recombine all results
+final_table <- do.call(rbind, all_results)
+
+# Write to csv
+
+output_date <- format(Sys.Date(), "%Y-%m-%d")
+
+file_name <- ifelse(variable == "services", 
+                    paste0(output_date, "_pbs_services_data.csv"), 
+                    paste0(output_date, "_pbs_benefit_data.csv"))
+
+write.csv(final_table, file_name, row.names = FALSE)
+
+cat("Data scraping and processing complete. Results saved to ", file_name, "\n")
