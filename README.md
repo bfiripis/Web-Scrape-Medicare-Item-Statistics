@@ -1,6 +1,6 @@
 # Web-Scrape-Medicare-Item-Statistics
-This R script scrapes Medicare services data from the Medicare Statistics website. 
-It retrieves the number of services provided for specified Medicare Benefits Schedule (MBS) items, broken down by time period and state.
+This R script scrapes Medicare services data from the Medicare Statistics website <https://medicarestatistics.humanservices.gov.au>. 
+It retrieves the number of services provided for specified Medicare Benefits Schedule (MBS) or Pharmaceutical Benefits Schedule (PBS) items, broken down by month and state.
 
 ## Prerequisites
 Before running the script, ensure you have the following R packages installed:
@@ -8,20 +8,20 @@ Before running the script, ensure you have the following R packages installed:
 -   `rvest`
 -   `dplyr`
 -   `tidyr`
--   `writexl`
 -   `httr`
--   `readxl`
 ```
 
 You can install these packages using the following command in your R console:
 ```R
-install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
+install.packages(c("rvest", "dplyr", "tidyr",  "httr"))
 ```
 
-## Input Data
-
-    2025-03-01 MBS-XML-20250301.xlsx (or your  file): This Excel file should contain a column named ItemNum listing the MBS item numbers for which you want to retrieve data.
-    Replace this with the latest version of the MBS XML from the MBS website <https://www.mbsonline.gov.au/internet/mbsonline/publishing.nsf/Content/downloads>, converted to an excel workbook. 
+## Input Data - MBS
+    2025-03-01 MBS-XML-20250301.csv (or your  file): This csv file should contain a column named ItemNum listing the MBS item numbers for which you want to retrieve data.
+    Replace this with the latest version of the MBS XML from the MBS website <https://www.mbsonline.gov.au/internet/mbsonline/publishing.nsf/Content/downloads>, converted to a csv. 
+## Input Data - pBS
+    PBSSchedule.csv: This CSV file should contain a column named pbs_code listing the PBS item numbers for which you want to retrieve data.
+    For the PBS you will need to download the latest version of the PBS Schedule using Postman <https://data.pbs.gov.au/document/91345.html>
 
 ## Script Overview
     1. Read Input Data: It reads the MBS item numbers from the specified Excel file.
@@ -37,7 +37,7 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
     5. Write to Excel: It writes the final data frame to an Excel file named medicare_services_data.xlsx.
 
 ## Usage
-    1. Place the latest MBS-XML Excel file in the same directory as the R script and modify the file path within the script.
+    1. Place the latest MBS/PBS file in the same directory as the R script and modify the file path within the script.
       available here <https://www.mbsonline.gov.au/internet/mbsonline/publishing.nsf/Content/downloads>
                         If you only want certain items, or are only looking at services provided in a given time period, update this code:
 ```R
@@ -61,13 +61,25 @@ install.packages(c("rvest", "dplyr", "tidyr", "writexl", "httr", "readxl"))
     4. The script will download the data, process it, and save it to medicare_services_data.xlsx in the same directory.
 
 ## Output Data
-```R
-    medicare_services_data.xlsx: This Excel file contains the scraped and processed Medicare services data. The columns are:
-        Item: MBS item number.
-        Month: Time period (month).
-        NSW, VIC, QLD, SA, WA, TAS, ACT, NT: Number of services provided in each state/territory.
-        Total: Total number of services provided across all states/territories.
-```
+# MBS Output
+The columns in the MBS output CSV are:
+
+    Item: MBS item number.
+    Month: Time period (month).
+    NSW, VIC, QLD, SA, WA, TAS, ACT, NT: Number of services provided in each state/territory.
+    Total: Total number of services provided across all states/territories.
+    Category: MBS Category
+    Group: MBS Group
+    SubGroup: MBS SubGroup
+    
+# PBS Output
+The columns in the PBS output CSV are:
+
+    Item: PBS item code.
+    Scheme: PBS or RPBS scheme
+    Month: Time period (month).
+    NSW, VIC, QLD, SA, WA, TAS, ACT, NT: Number of services provided in each state/territory.
+    Total: Total number of services provided across all states/territories.
 
 ## Notes
     This script can be really slow, this is due to slow response time from SAS backend of Services Australia's server
